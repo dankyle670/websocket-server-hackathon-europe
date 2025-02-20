@@ -1,4 +1,3 @@
-// wsServer.js
 require("dotenv").config();
 const express = require("express");
 const http = require("http");
@@ -8,8 +7,10 @@ const cors = require("cors");
 const app = express();
 const server = http.createServer(app);
 
+// Enable CORS
 app.use(cors());
 
+// WebSocket Server
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -17,38 +18,46 @@ const io = new Server(server, {
 });
 
 const activeUsers = new Map();
-const games = new Map();
 
 io.on("connection", (socket) => {
   console.log(`New user connected: ${socket.id}`);
 
+  // Register user with socket
   socket.on("register", (userId) => {
+    console.log(`User ${userId} connected with socket ID: ${socket.id}`);
     activeUsers.set(userId, socket.id);
   });
 
-  socket.on("game-start", (data) => {
+  // Send game invite
+  socket.on("invite", (data) => {
+    console.log(`Game invite from ${data.senderId} to ${data.receiverId}`);
     const receiverSocketId = activeUsers.get(data.receiverId);
     if (receiverSocketId) {
-      const snakes = generateSnakes();
-      const ladders = generateLadders();
-      games.set(data.senderId, { snakes, ladders });
-      io.to(receiverSocketId).emit("game-start", { snakes, ladders, turn: data.senderId });
-      socket.emit("game-start", { snakes, ladders, turn: data.senderId });
+      io.to(receiverSocketId).emit("receive-invite", data);
     }
   });
 
-  socket.on("player-move", (data) => {
-    const receiverSocketId = activeUsers.get(data.receiverId);
-    io.to(receiverSocketId).emit("player-move", data);
+  // Accept game invite
+  socket.on("accept-invite", (data) => {
+    console.log(`Game accepted by ${data.receiverId}`);
+    const senderSocketId = activeUsers.get(data.senderId);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("invite-accepted", data);
+    }
   });
 
-  socket.on("game-over", (data) => {
-    const receiverSocketId = activeUsers.get(data.winner === data.senderId ? data.receiverId : data.senderId);
-    io.to(receiverSocketId).emit("game-over", data);
-    socket.emit("game-over", data);
+  // Handle user disconnection
+  socket.on("disconnect", () => {
+    console.log(`User disconnected: ${socket.id}`);
+    activeUsers.forEach((value, key) => {
+      if (value === socket.id) {
+        activeUsers.delete(key);
+      }
+    });
   });
 });
 
+// Start WebSocket Server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`WebSocket Server running on port ${PORT}`);
