@@ -1,3 +1,4 @@
+// wsServer.js
 require("dotenv").config();
 const express = require("express");
 const http = require("http");
@@ -18,6 +19,7 @@ const io = new Server(server, {
 });
 
 const activeUsers = new Map();
+const games = new Map();
 
 io.on("connection", (socket) => {
   console.log(`New user connected: ${socket.id}`);
@@ -28,22 +30,57 @@ io.on("connection", (socket) => {
     activeUsers.set(userId, socket.id);
   });
 
-  // Send game invite
-  socket.on("invite", (data) => {
-    console.log(`Game invite from ${data.senderId} to ${data.receiverId}`);
+  // 🎲 Start Snakes & Ladders Game
+  socket.on("snakes-game-start", (data) => {
+    console.log(`Starting Snakes Game: ${data.senderId} vs ${data.receiverId}`);
     const receiverSocketId = activeUsers.get(data.receiverId);
+
     if (receiverSocketId) {
-      io.to(receiverSocketId).emit("receive-invite", data);
+      games.set(data.senderId, { turn: data.senderId });
+      games.set(data.receiverId, { turn: data.senderId });
+
+      // Notify both players about game start
+      io.to(receiverSocketId).emit("snakes-game-start", {
+        turn: data.senderId,
+      });
+      socket.emit("snakes-game-start", {
+        turn: data.senderId,
+      });
     }
   });
 
-  // Accept game invite
-  socket.on("accept-invite", (data) => {
-    console.log(`Game accepted by ${data.receiverId}`);
-    const senderSocketId = activeUsers.get(data.senderId);
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("invite-accepted", data);
+  // 🎲 Player Move
+  socket.on("snakes-move", (moveData) => {
+    console.log("Player Move:", moveData);
+    const receiverSocketId = activeUsers.get(moveData.receiverId);
+
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("snakes-move", moveData);
     }
+
+    // Switch turns
+    games.set(moveData.senderId, { turn: moveData.receiverId });
+    games.set(moveData.receiverId, { turn: moveData.receiverId });
+  });
+
+  // 🎲 Game Over
+  socket.on("snakes-game-over", (gameOverData) => {
+    console.log("Game Over:", gameOverData);
+    const receiverSocketId = activeUsers.get(
+      gameOverData.winner === gameOverData.senderId
+        ? gameOverData.receiverId
+        : gameOverData.senderId
+    );
+
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("snakes-game-over", gameOverData);
+    }
+
+    socket.emit("snakes-game-over", gameOverData);
+
+    // Clear game data
+    games.delete(gameOverData.senderId);
+    games.delete(gameOverData.receiverId);
   });
 
   // Handle user disconnection
