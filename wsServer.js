@@ -51,16 +51,31 @@ io.on("connection", (socket) => {
 
   // 🎮 Register User
   socket.on("register", (userId) => {
-    console.log(`✅ User ${userId} connected with socket ID: ${socket.id}`);
-    activeUsers.set(userId, socket.id);
+    if (userId) {
+      console.log(`✅ User ${userId} connected with socket ID: ${socket.id}`);
+      activeUsers.set(userId, socket.id);
+    } else {
+      console.error("❌ User ID not provided during registration.");
+    }
   });
 
   // 📩 Send Game Invite
   socket.on("invite", (data) => {
-    console.log(`🎲 Game invite from ${data.senderId} to ${data.receiverId}`);
-    const receiverSocketId = activeUsers.get(data.receiverId);
+    const { senderId, receiverId, gameType } = data;
+
+    console.log(`🎲 Game invite from ${senderId} to ${receiverId} for ${gameType}`);
+
+    // Check if senderId or gameType is null
+    if (!senderId || !gameType) {
+      console.error("❌ senderId or gameType is null. Invite not processed.");
+      return;
+    }
+
+    const receiverSocketId = activeUsers.get(receiverId);
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("receive-invite", data);
+    } else {
+      console.error("❌ Receiver not connected.");
     }
   });
 
