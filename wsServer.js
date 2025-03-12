@@ -4,6 +4,7 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
+const Invite = require("./models/Invite");
 
 const app = express();
 const server = http.createServer(app);
@@ -45,54 +46,59 @@ const generateSnakesAndLadders = () => {
   return { snakes, ladders };
 };
 
-// 🌐 WebSocket Event Handling
+// WebSocket Event Handling
 io.on("connection", (socket) => {
-  console.log(`🚀 New user connected: ${socket.id}`);
+  console.log(`New user connected: ${socket.id}`);
 
   // 🎮 Register User
   socket.on("register", (userId) => {
     if (userId) {
-      console.log(`✅ User ${userId} connected with socket ID: ${socket.id}`);
+      console.log(`User ${userId} connected with socket ID: ${socket.id}`);
       activeUsers.set(userId, socket.id);
     } else {
-      console.error("❌ User ID not provided during registration.");
+      console.error("User ID not provided during registration.");
     }
   });
 
   // 📩 Send Game Invite
-  socket.on("invite", (data) => {
+  socket.on("invite", async (data) => {
     const { senderId, receiverId, gameType } = data;
 
-    console.log(`🎲 Game invite from ${senderId} to ${receiverId} for ${gameType}`);
-
-    // Check if senderId or gameType is null
-    if (!senderId || !gameType) {
-      console.error("❌ senderId or gameType is null. Invite not processed.");
+    if (!senderId || !receiverId || !gameType) {
+      console.error("Missing invite data.");
       return;
     }
 
-    const receiverSocketId = activeUsers.get(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("receive-invite", data);
-    } else {
-      console.error("❌ Receiver not connected.");
+    try {
+      // Save the invite to the database
+      const invite = new Invite({ senderId, receiverId, gameType });
+      await invite.save();
+
+      const receiverSocketId = activeUsers.get(receiverId);
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit("receive-invite", data);
+      } else {
+        console.error("Receiver not connected.");
+      }
+    } catch (error) {
+      console.error("Error saving invite:", error);
     }
   });
 
-  // ✅ Accept Game Invite
+  // Accept Game Invite
   socket.on("accept-invite", (data) => {
-    console.log(`🎲 Game accepted by ${data.receiverId}`);
+    console.log(`Game accepted by ${data.receiverId}`);
     const senderSocketId = activeUsers.get(data.senderId);
     if (senderSocketId) {
       io.to(senderSocketId).emit("invite-accepted", data);
     }
   });
 
-  // 🔥 ==============================
+  // ==============================
   //        CHECKERS EVENTS
-  // 🔥 ==============================
+  // ==============================
 
-  // 🎲 Start Checkers Game
+  // Start Checkers Game
   socket.on("checkers-game-start", (data) => {
     console.log(`♟️ Checkers Game Start: ${data.senderId} vs ${data.receiverId}`);
 
@@ -119,7 +125,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  // 🎲 Receive Checkers Move
+  // Receive Checkers Move
   socket.on("checkers-move", (moveData) => {
     console.log(`♟️ Checkers Move: ${moveData.senderId} -> ${moveData.newPosition}`);
     const receiverSocketId = activeUsers.get(moveData.receiverId);
@@ -128,7 +134,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 🎲 Checkers Game Over
+  // Checkers Game Over
   socket.on("checkers-game-over", (gameOverData) => {
     console.log(`🏆 Checkers Game Over: Winner is ${gameOverData.winner}`);
     const receiverSocketId = activeUsers.get(gameOverData.receiverId);
@@ -136,13 +142,13 @@ io.on("connection", (socket) => {
     socket.emit("checkers-game-over", gameOverData);
   });
 
-  // 🔥 ==============================
+  // ==============================
   //  SNAKES & LADDERS EVENTS
-  // 🔥 ==============================
+  // ==============================
 
-  // 🎲 Start Snakes & Ladders Game
+  // Start Snakes & Ladders Game
   socket.on("snakes-game-start", (data) => {
-    console.log(`🐍🪜 Snakes & Ladders Game Start: ${data.senderId} vs ${data.receiverId}`);
+    console.log(` Snakes & Ladders Game Start: ${data.senderId} vs ${data.receiverId}`);
 
     // Generate Snakes and Ladders
     const { snakes, ladders } = generateSnakesAndLadders();
@@ -171,18 +177,18 @@ io.on("connection", (socket) => {
     });
   });
 
-  // 🎲 Receive Snakes & Ladders Move
+  // Receive Snakes & Ladders Move
   socket.on("snakes-move", (moveData) => {
-    console.log(`🐍🪜 Snakes Move: ${moveData.senderId} -> ${moveData.newPosition}`);
+    console.log(`Snakes Move: ${moveData.senderId} -> ${moveData.newPosition}`);
     const receiverSocketId = activeUsers.get(moveData.receiverId);
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("snakes-move", moveData);
     }
   });
 
-  // 🎲 Snakes & Ladders Game Over
+  // Snakes & Ladders Game Over
   socket.on("snakes-game-over", (gameOverData) => {
-    console.log(`🏆 Snakes & Ladders Game Over: Winner is ${gameOverData.winner}`);
+    console.log(`Snakes & Ladders Game Over: Winner is ${gameOverData.winner}`);
     const receiverSocketId = activeUsers.get(gameOverData.receiverId);
     io.to(receiverSocketId).emit("snakes-game-over", gameOverData);
     socket.emit("snakes-game-over", gameOverData);
@@ -190,7 +196,7 @@ io.on("connection", (socket) => {
 
   // 🔌 User Disconnection
   socket.on("disconnect", () => {
-    console.log(`🔌 User disconnected: ${socket.id}`);
+    console.log(`User disconnected: ${socket.id}`);
     activeUsers.forEach((value, key) => {
       if (value === socket.id) {
         activeUsers.delete(key);
@@ -202,5 +208,5 @@ io.on("connection", (socket) => {
 // Start WebSocket Server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`🚀 WebSocket Server running on port ${PORT}`);
+  console.log(`WebSocket Server running on port ${PORT}`);
 });
